@@ -129,7 +129,7 @@ async def post_answer(context, question_url, answer_text):
         await page.wait_for_timeout(2000)
         
         # Click POST (Uncomment the line below to enable actual posting)
-        # await page.click("button:has-text('Post')")
+        await page.click("button:has-text('Post')")
         print("   [SUCCESS] Answer typed into editor (Posting simulated).")
         print("   *** TO ENABLE REAL POSTING: Uncomment line 125 in bot.py ***")
         
@@ -184,3 +184,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
