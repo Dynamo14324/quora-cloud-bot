@@ -83,16 +83,24 @@ async def ask_chatgpt(context, question):
         # Wait for input box
         await page.wait_for_selector("#prompt-textarea", timeout=20000)
         
-        # Type and Send
+        # Type Question
+        await page.click("#prompt-textarea") # Focus first
         await page.fill("#prompt-textarea", "")
         await page.type("#prompt-textarea", question, delay=15)
-        await page.wait_for_timeout(500)
-        await page.click("button[data-testid='send-button']")
+        await page.wait_for_timeout(1000)
+        
+        # --- FIX: PRESS ENTER INSTEAD OF CLICKING ---
+        await page.keyboard.press("Enter")
         
         print("   [AI] Waiting for answer...")
+        
+        # Wait for the "Stop Generating" button to appear (proof it started)
+        # OR wait for the "Send" button to disappear
+        await page.wait_for_timeout(3000)
+        
         # Wait for generation to finish (Send button reappears)
-        await page.wait_for_timeout(5000) # Initial buffer
-        for _ in range(90): # Max 90 seconds wait
+        # We increased timeout to 120s for long answers
+        for _ in range(120): 
             if await page.is_visible("button[data-testid='send-button']"):
                 break
             await page.wait_for_timeout(1000)
@@ -104,6 +112,8 @@ async def ask_chatgpt(context, question):
             print("   [AI] Answer generated!")
             await page.close()
             return text
+        else:
+            print("   [WARN] No response found (Generation might have failed).")
             
     except Exception as e:
         print(f"   [ERROR] ChatGPT failed: {e}")
