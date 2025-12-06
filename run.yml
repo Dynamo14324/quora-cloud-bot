@@ -1,0 +1,30 @@
+name: 24/7 Quora Bot
+
+on:
+  schedule:
+    # Run every hour (at minute 0)
+    # WARNING: Do not run more often to keep within Free Tier (2000 mins/mo)
+    - cron: '0 * * * *'
+  workflow_dispatch: # Allows you to run manually from Phone App
+
+jobs:
+  run_bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: |
+          pip install playwright
+          playwright install chromium
+
+      - name: Run Bot
+        env:
+          AUTH_JSON: ${{ secrets.AUTH_JSON }}
+        run: python bot.py
