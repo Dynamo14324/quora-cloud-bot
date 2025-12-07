@@ -64,60 +64,67 @@ async def ask_chatgpt(context, question):
     try:
         await page.goto(CHATGPT_PROJECT_URL)
         
-        await page.wait_for_timeout(3000)
+        # DEBUG 1: Screenshot after loading the page
+        await page.wait_for_timeout(5000)
+        await page.screenshot(path="debug_01_loaded.png")
+        print("   [DEBUG] Screenshot taken: debug_01_loaded.png")
+
         title = await page.title()
         if "Login" in title or "Just a moment" in title:
              print(f"   [CRITICAL] ChatGPT blocked or logged out. Title: '{title}'")
+             await page.screenshot(path="debug_error_login.png")
              await page.close()
              return None
 
         # Wait for input box
-        await page.wait_for_selector("#prompt-textarea", timeout=20000)
+        try:
+            await page.wait_for_selector("#prompt-textarea", timeout=20000)
+        except:
+            print("   [ERROR] Input box not found.")
+            await page.screenshot(path="debug_error_no_input.png")
+            return None
         
         # Type Question
-        await page.click("#prompt-textarea") 
+        await page.click("#prompt-textarea")
         await page.fill("#prompt-textarea", "")
         await page.type("#prompt-textarea", question, delay=15)
-        await page.wait_for_timeout(1000)
         
-        # Click Send Button (Explicitly)
+        # DEBUG 2: Screenshot after typing (Verify the question is written)
+        await page.wait_for_timeout(1000)
+        await page.screenshot(path="debug_02_typed.png")
+        print("   [DEBUG] Screenshot taken: debug_02_typed.png")
+        
+        # Click Send
         send_button = page.locator('button[data-testid="send-button"]')
         if await send_button.is_visible():
             await send_button.click()
             print("   [AI] Clicked Send Button.")
         else:
             await page.keyboard.press("Enter")
-            print("   [AI] Pressed Enter (Fallback).")
+            print("   [AI] Pressed Enter.")
 
         print("   [AI] Waiting for answer...")
         
-        # --- ROBUST WAIT LOOP ---
-        # Waits up to 180 seconds, handling "Continue generating"
-        start_time = time.time()
-        timeout = 180  # 3 minutes
-        
-        # 1. Wait for processing to start (Send button disappears)
+        # Wait for "Send" to disappear (Processing)
         try:
             await page.wait_for_selector('button[data-testid="send-button"]', state="hidden", timeout=10000)
         except:
-            print("   [WARN] Send button didn't disappear. Proceeding anyway...")
+            print("   [WARN] Send button stuck.")
+            await page.screenshot(path="debug_error_stuck_send.png")
 
-        # 2. Wait for completion
-        while time.time() - start_time < timeout:
-            # Check if Send button is back (Generation Complete)
-            if await page.is_visible('button[data-testid="send-button"]'):
-                break
+        # Wait for answer to finish
+        try:
+            await page.wait_for_selector('button[data-testid="send-button"]', state="visible", timeout=180000)
             
-            # Check if "Continue generating" appeared (Long answer paused)
-            if await page.is_visible("button:has-text('Continue generating')"):
-                print("   [AI] Detected 'Continue generating'. Clicking it...")
-                await page.click("button:has-text('Continue generating')")
-                # Reset timer to give it more time
-                start_time = time.time() 
+            # DEBUG 3: Screenshot of the answer
+            await page.screenshot(path="debug_03_result.png")
+            print("   [DEBUG] Screenshot taken: debug_03_result.png")
             
-            await asyncio.sleep(2)
-        
-        # Scrape last response
+        except:
+             print("   [WARN] Timeout waiting for generation.")
+             await page.screenshot(path="debug_error_timeout.png")
+
+        # Scrape response
         responses = page.locator("div.markdown")
         if await responses.count() > 0:
             text = await responses.nth(await responses.count() - 1).inner_text()
@@ -125,15 +132,15 @@ async def ask_chatgpt(context, question):
             await page.close()
             return text
         else:
-            print("   [WARN] No response found (Generation timed out or failed).")
-            # Snapshot for debugging (optional)
-            # await page.screenshot(path="debug_fail.png")
+            print("   [WARN] No response found.")
+            await page.screenshot(path="debug_error_no_text.png")
             
     except Exception as e:
         print(f"   [ERROR] ChatGPT failed: {e}")
+        await page.screenshot(path="debug_crash.png")
         await page.close()
     return None
-
+    
 async def post_to_quora(context, url, answer):
     print(f"   [QUORA] Posting answer...")
     page = await context.new_page()
@@ -211,3 +218,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
