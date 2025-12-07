@@ -2,10 +2,8 @@ name: 24/7 Quora Bot
 
 on:
   schedule:
-    # Run every hour (at minute 0)
-    # WARNING: Do not run more often to keep within Free Tier (2000 mins/mo)
     - cron: '0 * * * *'
-  workflow_dispatch: # Allows you to run manually from Phone App
+  workflow_dispatch:
 
 jobs:
   run_bot:
@@ -27,6 +25,12 @@ jobs:
       - name: Run Bot
         env:
           AUTH_JSON: ${{ secrets.AUTH_JSON }}
-
         run: python -u bot.py
 
+      # --- ADD THIS SECTION BELOW ---
+      - name: Upload Debug Screenshots
+        if: always() # Runs even if the bot crashes
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots
+          path: "*.png"
