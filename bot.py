@@ -5,6 +5,7 @@ import json
 import gzip
 import base64
 import re
+import time
 from playwright.async_api import async_playwright
 
 # --- CONFIGURATION ---
@@ -79,32 +80,43 @@ async def ask_chatgpt(context, question):
         await page.type("#prompt-textarea", question, delay=15)
         await page.wait_for_timeout(1000)
         
-        # --- FIX: CLICK SEND BUTTON INSTEAD OF ENTER ---
-        # "Enter" often creates a new line in headless/mobile viewports
+        # Click Send Button (Explicitly)
         send_button = page.locator('button[data-testid="send-button"]')
-        
         if await send_button.is_visible():
             await send_button.click()
             print("   [AI] Clicked Send Button.")
         else:
             await page.keyboard.press("Enter")
-            print("   [AI] Pressed Enter.")
+            print("   [AI] Pressed Enter (Fallback).")
 
         print("   [AI] Waiting for answer...")
         
-        # --- FIX: WAIT LOGIC ---
-        # 1. Wait for Send button to disappear (confirmation processing started)
+        # --- ROBUST WAIT LOOP ---
+        # Waits up to 180 seconds, handling "Continue generating"
+        start_time = time.time()
+        timeout = 180  # 3 minutes
+        
+        # 1. Wait for processing to start (Send button disappears)
         try:
             await page.wait_for_selector('button[data-testid="send-button"]', state="hidden", timeout=10000)
         except:
-            print("   [WARN] Send button did not disappear. Input might not have been submitted.")
+            print("   [WARN] Send button didn't disappear. Proceeding anyway...")
 
-        # 2. Wait for generation to finish (Send button reappears)
-        try:
-            await page.wait_for_selector('button[data-testid="send-button"]', state="visible", timeout=120000)
-        except:
-             print("   [WARN] Timeout waiting for generation to finish.")
-
+        # 2. Wait for completion
+        while time.time() - start_time < timeout:
+            # Check if Send button is back (Generation Complete)
+            if await page.is_visible('button[data-testid="send-button"]'):
+                break
+            
+            # Check if "Continue generating" appeared (Long answer paused)
+            if await page.is_visible("button:has-text('Continue generating')"):
+                print("   [AI] Detected 'Continue generating'. Clicking it...")
+                await page.click("button:has-text('Continue generating')")
+                # Reset timer to give it more time
+                start_time = time.time() 
+            
+            await asyncio.sleep(2)
+        
         # Scrape last response
         responses = page.locator("div.markdown")
         if await responses.count() > 0:
@@ -113,7 +125,9 @@ async def ask_chatgpt(context, question):
             await page.close()
             return text
         else:
-            print("   [WARN] No response found (Generation might have failed).")
+            print("   [WARN] No response found (Generation timed out or failed).")
+            # Snapshot for debugging (optional)
+            # await page.screenshot(path="debug_fail.png")
             
     except Exception as e:
         print(f"   [ERROR] ChatGPT failed: {e}")
@@ -134,6 +148,7 @@ async def post_to_quora(context, url, answer):
         await page.wait_for_selector("div[role='textbox']", state="visible", timeout=10000)
         await page.click("div[role='textbox']")
         
+        # Type safely
         safe_answer = answer[:3000] 
         for chunk in [safe_answer[i:i+50] for i in range(0, len(safe_answer), 50)]:
             await page.keyboard.insert_text(chunk)
@@ -169,8 +184,7 @@ async def main():
             ]
         )
         
-        # --- FIX: FORCE DESKTOP VIEWPORT ---
-        # Defaults to 1280x720 or smaller in headless, triggering "Enter = Newline"
+        # Use Desktop Viewport
         context = await browser.new_context(
             storage_state="auth.json",
             user_agent=USER_AGENT,
